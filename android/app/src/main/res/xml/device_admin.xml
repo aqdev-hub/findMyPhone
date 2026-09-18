@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Device admin policy for ProtectionDeviceAdminReceiver.
+
+    force-lock: required for DevicePolicyManager.lockNow(), which powers the
+    LOCK / قفل SMS command and the in-app "Test Device Lock" action.
+
+    We intentionally request the minimum policy set — no wipe-data,
+    no password-quality enforcement, no camera restriction — this is
+    anti-theft tooling, not a full MDM profile.
+-->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <force-lock />
+    </uses-policies>
+</device-admin>
