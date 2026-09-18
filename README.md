@@ -87,6 +87,19 @@ The idea is simple: **one trusted phone number + a text message = full control o
 
 ---
 
+## 🏗️ البنية التقنية — Tech Stack
+
+| الطبقة Layer | التقنية Technology |
+|---|---|
+| **UI Framework** | Flutter (Dart) |
+| **إدارة الحالة State Management** | Riverpod 3 |
+| **التخزين المحلي Local Storage** | SQLCipher (`sqflite_sqlcipher`), `flutter_secure_storage`, `shared_preferences` |
+| **التشفير Hashing** | PBKDF2-style SHA-256 (120,000 rounds), مطابق بين Dart و Kotlin |
+| **الخرائط Maps** | `flutter_map` + OpenStreetMap (بدون API key) |
+| **الموقع Location** | `geolocator` |
+| **الجزء الأصلي Native (Android)** | Kotlin — Device Admin API، WorkManager، Foreground Services، Broadcast Receivers |
+| **معالجة SMS** | `SmsCommandReceiver` → `WorkManager` → `SmsProcessorWorker` (موثوقة، تعيد المحاولة تلقائيًا) |
+
 ## 🔑 الأذونات المطلوبة — Required Permissions
 
 | الإذن | لماذا هو ضروري |
@@ -106,6 +119,27 @@ The idea is simple: **one trusted phone number + a text message = full control o
 - Flutter SDK (القناة المستقرة — stable channel)
 - Android Studio / أي محرر يدعم Flutter
 - جهاز أندرويد فعلي يدعم SMS (المحاكيات لا تدعم استقبال/إرسال SMS حقيقي)
+
+### خطوات البناء — Build Steps
+
+```bash
+# 1. استنساخ المستودع — Clone the repository
+git clone https://github.com/<your-username>/find_my_phone.git
+cd find_my_phone
+
+# 2. تثبيت الحزم — Install dependencies
+flutter pub get
+
+# 3. التشغيل على جهاز متصل — Run on a connected device
+flutter run
+
+# 4. بناء نسخة الإنتاج — Build a release APK
+flutter build apk --release
+```
+
+> ⚠️ **ملاحظة:** التطبيق يعتمد بالكامل على SMS الحقيقي، لذا يجب اختباره على **جهاز فعلي** ببطاقة SIM، وليس على محاكي.
+>
+> ⚠️ **Note:** Since the app relies entirely on real SMS, it must be tested on a **physical device** with an active SIM card — not an emulator.
 
 ---
 
@@ -134,6 +168,12 @@ The idea is simple: **one trusted phone number + a text message = full control o
 - **تطبيقاتي الأخرى — More apps by the developer:** https://abdulquddus-dev.github.io/
 
 ---
+
+## 🤝 المساهمة — Contributing
+
+المساهمات مرحّب بها! افتح Issue لمناقشة أي تغيير كبير قبل إرسال Pull Request.
+
+Contributions are welcome! Please open an issue to discuss significant changes before submitting a pull request.
 
 ## 📄 الترخيص — License
 

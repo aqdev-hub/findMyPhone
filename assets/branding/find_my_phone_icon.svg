@@ -1,0 +1,23 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" rx="224" fill="#0E1726"/>
+  <circle cx="512" cy="512" r="420" fill="#102B3F"/>
+  <path d="M512 160C374.5 160 263 271.5 263 409C263 600 512 846 512 846C512 846 761 600 761 409C761 271.5 649.5 160 512 160Z" fill="#18B7A4"/>
+  <path d="M512 160C374.5 160 263 271.5 263 409C263 600 512 846 512 846C512 846 761 600 761 409C761 271.5 649.5 160 512 160Z" fill="url(#pinShade)" fill-opacity="0.55"/>
+  <circle cx="512" cy="409" r="184" fill="#F7FAFC"/>
+  <circle cx="512" cy="409" r="146" fill="#E7F0F4"/>
+  <rect x="428" y="270" width="168" height="278" rx="36" fill="#112033"/>
+  <rect x="452" y="306" width="120" height="188" rx="18" fill="#21C7B5"/>
+  <path d="M471 462H553" stroke="#F7FAFC" stroke-width="18" stroke-linecap="round"/>
+  <path d="M472 343C495 322 529 318 556 336" stroke="#F7FAFC" stroke-width="18" stroke-linecap="round"/>
+  <path d="M420 316C469 267 555 260 612 309" stroke="#F7FAFC" stroke-width="22" stroke-linecap="round" opacity="0.8"/>
+  <circle cx="512" cy="530" r="14" fill="#F7FAFC"/>
+  <circle cx="644" cy="271" r="34" fill="#FFD166"/>
+  <path d="M331 711C378 754 438 781 512 789C586 781 646 754 693 711C627 763 397 763 331 711Z" fill="#0E1726" fill-opacity="0.18"/>
+  <defs>
+    <linearGradient id="pinShade" x1="345" y1="198" x2="705" y2="781" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3BE4D1"/>
+      <stop offset="0.52" stop-color="#14A78F"/>
+      <stop offset="1" stop-color="#0B6370"/>
+    </linearGradient>
+  </defs>
+</svg>
