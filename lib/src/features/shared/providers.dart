@@ -110,12 +110,15 @@ final hasCustomAppLockPinProvider = FutureProvider(
 
 // ── Location service ──────────────────────────────────────────────────────────
 final locationCaptureProvider = Provider((ref) => LocationCaptureService(
-    ref.watch(locationRepositoryProvider), ref.watch(auditLogRepositoryProvider)));
+    ref.watch(locationRepositoryProvider),
+    ref.watch(auditLogRepositoryProvider),
+    ref.watch(nativeBridgeProvider)));
 
 class LocationCaptureService {
-  LocationCaptureService(this._locations, this._logs);
+  LocationCaptureService(this._locations, this._logs, this._native);
   final LocationRepository _locations;
   final AuditLogRepository _logs;
+  final NativeBridge _native;
 
   /// The precise reason the most recent [capture] call didn't get a fresh
   /// fix, for on-screen diagnostics — e.g. "permission: deniedForever",
@@ -138,6 +141,27 @@ class LocationCaptureService {
       lastFailureReason = 'location_services_disabled';
       await _logs.add('location', 'خدمة الموقع (GPS) مُعطّلة على الجهاز / Device location services are turned off.');
       return _locations.lastKnown();
+    }
+
+    // Try the native dual-provider race first (GPS + Network requested
+    // simultaneously, whichever answers first wins) — this is what already
+    // reliably powers the SMS LOCATE command, and is meaningfully more
+    // robust than the Dart geolocator plugin alone on devices with
+    // degraded Google Play Services (common on some budget/regional
+    // devices), where a single-provider strategy can time out entirely.
+    try {
+      final fix = await _native.captureFreshLocation();
+      final location = KnownLocation(
+        latitude: fix.latitude,
+        longitude: fix.longitude,
+        source: LocationSource.gps,
+        createdAt: DateTime.now(),
+      );
+      await _locations.save(location);
+      await _logs.add('location', 'تم تحديث الموقع / Location updated: ${fix.latitude.toStringAsFixed(5)}, ${fix.longitude.toStringAsFixed(5)}');
+      return location;
+    } catch (e) {
+      lastFailureReason = 'native_race: $e';
     }
 
     final position = await _getPositionWithFallback();
@@ -186,7 +210,7 @@ class LocationCaptureService {
       return await Geolocator.getCurrentPosition(
         locationSettings: AndroidSettings(
           accuracy: LocationAccuracy.high,
-          timeLimit: const Duration(seconds: 12),
+          timeLimit: const Duration(seconds: 20),
           forceLocationManager: false,
         ),
       );
@@ -196,7 +220,7 @@ class LocationCaptureService {
         return await Geolocator.getCurrentPosition(
           locationSettings: AndroidSettings(
             accuracy: LocationAccuracy.high,
-            timeLimit: const Duration(seconds: 12),
+            timeLimit: const Duration(seconds: 20),
             forceLocationManager: true,
           ),
         );

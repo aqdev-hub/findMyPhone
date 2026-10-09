@@ -12,6 +12,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../../core/constants.dart';
 import '../../../core/l10n/app_strings.dart';
 import '../../../core/security/emergency_code_hasher.dart';
 import '../../../core/sms/emergency_command.dart';
@@ -45,8 +46,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final logs = await bridge.getPendingNativeLogs();
       if (logs.isEmpty) return;
       final logRepo = ref.read(auditLogRepositoryProvider);
+      var codeWasReset = false;
       for (final log in logs) {
         await logRepo.add(log.type, log.message);
+        if (log.type == 'code_reset') codeWasReset = true;
+      }
+      // An SMS RESET changed the code natively while the app wasn't running.
+      // Adopt the same documented default here so the app's own stored code
+      // (used by App Lock and code changes) matches what SMS now expects.
+      if (codeWasReset) {
+        await ref
+            .read(settingsRepositoryProvider)
+            .saveEmergencyCode(AppConstants.defaultResetCode);
       }
       await bridge.clearPendingNativeLogs();
       ref.invalidate(logsProvider);
@@ -298,7 +309,7 @@ class _AppDrawer extends ConsumerWidget {
   void _showAbout(BuildContext context, AppStrings s) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(s.aboutTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -322,7 +333,7 @@ class _AppDrawer extends ConsumerWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: Text(s.close),
           ),
         ],
@@ -340,7 +351,7 @@ class _AppDrawer extends ConsumerWidget {
   void _showHelp(BuildContext context, AppStrings s) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(s.drawerHelp),
         content: SingleChildScrollView(
           child: Column(
@@ -361,7 +372,7 @@ class _AppDrawer extends ConsumerWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: Text(s.close),
           ),
         ],
@@ -1149,16 +1160,16 @@ class _ContactsPageState extends ConsumerState<_ContactsPage> {
   ) async {
     return await showDialog<bool>(
           context: context,
-          builder: (_) => AlertDialog(
+          builder: (dialogContext) => AlertDialog(
             title: Text(s.deleteContact),
             content: Text('${s.deleteConfirm} "$name"؟'),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, false),
+                onPressed: () => Navigator.pop(dialogContext, false),
                 child: Text(s.cancel),
               ),
               FilledButton(
-                onPressed: () => Navigator.pop(context, true),
+                onPressed: () => Navigator.pop(dialogContext, true),
                 child: Text(s.delete),
               ),
             ],
@@ -1385,6 +1396,18 @@ class _CodeSectionState extends ConsumerState<_CodeSection> {
       title: s.settingsEmergencyCode,
       subtitle: s.settingsEmergencyCodeDesc,
       children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: cs.tertiaryContainer,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            s.resetDefaultCodeWarning,
+            style: TextStyle(fontSize: 12, color: cs.onTertiaryContainer),
+          ),
+        ),
         TextField(
           controller: _cur,
           obscureText: !_show,
@@ -1618,7 +1641,7 @@ class _AppLockSectionState extends ConsumerState<_AppLockSection> {
     final controller = TextEditingController();
     final pin = await showDialog<String>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(s.appLockSetCustomPin),
         content: TextField(
           controller: controller,
@@ -1627,11 +1650,11 @@ class _AppLockSectionState extends ConsumerState<_AppLockSection> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: Text(s.cancel),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
             child: Text(s.appLockSave),
           ),
         ],
@@ -2209,7 +2232,7 @@ class _TestSectionState extends ConsumerState<_TestSection> {
           onTap: () async {
             final confirmed = await showDialog<bool>(
               context: context,
-              builder: (_) => AlertDialog(
+              builder: (dialogContext) => AlertDialog(
                 title: Text(s.testAlarm),
                 content: Text(
                   s.isAr
@@ -2218,11 +2241,11 @@ class _TestSectionState extends ConsumerState<_TestSection> {
                 ),
                 actions: [
                   TextButton(
-                    onPressed: () => Navigator.pop(context, false),
+                    onPressed: () => Navigator.pop(dialogContext, false),
                     child: Text(s.cancel),
                   ),
                   FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
+                    onPressed: () => Navigator.pop(dialogContext, true),
                     child: Text(s.testAlarm),
                   ),
                 ],
@@ -2264,16 +2287,16 @@ class _TestSectionState extends ConsumerState<_TestSection> {
           onTap: () async {
             final confirmed = await showDialog<bool>(
               context: context,
-              builder: (_) => AlertDialog(
+              builder: (dialogContext) => AlertDialog(
                 title: Text(s.testLockConfirmTitle),
                 content: Text(s.testLockConfirmDesc),
                 actions: [
                   TextButton(
-                    onPressed: () => Navigator.pop(context, false),
+                    onPressed: () => Navigator.pop(dialogContext, false),
                     child: Text(s.cancel),
                   ),
                   FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
+                    onPressed: () => Navigator.pop(dialogContext, true),
                     child: Text(s.testLock),
                   ),
                 ],
@@ -2451,16 +2474,16 @@ class _LiveTrackingBannerState extends ConsumerState<_LiveTrackingBanner> {
     final s = ref.read(stringsProvider);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(s.stopLiveTrackingConfirmTitle),
         content: Text(s.stopLiveTrackingConfirmDesc),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: Text(s.cancel),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: Text(s.stopLiveTracking),
           ),
         ],

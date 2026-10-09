@@ -1,3 +1,5 @@
+import '../constants.dart';
+
 /// All UI strings in both Arabic and English.
 /// Usage: context.l10n.appName  OR  AppStrings.of(context).appName
 class AppStrings {
@@ -62,7 +64,9 @@ class AppStrings {
   String get stopAlarm => isAr ? 'إيقاف الإنذار' : 'Stop Alarm';
   String get locationUpdating => isAr ? 'جاري تحديث الموقع...' : 'Updating location...';
   String get locationUpdated => isAr ? 'تم تحديث الموقع.' : 'Location updated.';
-  String get locationFailed => isAr ? 'فشل تحديث الموقع.' : 'Location update failed.';
+  String get locationFailed => isAr
+      ? 'فشل تحديث الموقع. جرّب بالقرب من نافذة أو في مكان مكشوف، وتأكد أن وضع الموقع في إعدادات النظام على "دقة عالية".'
+      : 'Location update failed. Try near a window or in an open area, and make sure system location mode is set to "High accuracy".';
   String get source => isAr ? 'المصدر' : 'Source';
   String get sourceGps => isAr ? 'GPS دقيق' : 'Precise GPS';
   String get sourceApprox => isAr ? 'تقريبي' : 'Approximate';
@@ -81,18 +85,21 @@ class AppStrings {
   String get cmdLock =>
       isAr ? 'يقفل شاشة الجهاز فورًا عن بُعد.' : 'Locks the device screen instantly, remotely.';
   String get cmdReset => isAr
-      ? 'يعيّن رمز طوارئ جديد بدون معرفة القديم — يتطلب أن يكون المُرسِل رقمًا موثوقًا مسجّلًا مسبقًا. يُنبَّه بقية جهات الاتصال الموثوقة تلقائيًا.'
-      : 'Sets a brand-new emergency code without knowing the old one — requires the sender to be a pre-registered trusted number. Every other trusted contact is alerted automatically.';
+      ? 'يعيد رمز الطوارئ إلى الرمز الافتراضي ${AppConstants.defaultResetCode} (اكتب: استرجاع أي_كلمة). لأرقام موثوقة فقط، وتُنبَّه بقية الأرقام تلقائيًا.'
+      : 'Resets the emergency code to the default ${AppConstants.defaultResetCode} (send: RESET anyword). Trusted numbers only; other trusted numbers are alerted automatically.';
+  String get resetDefaultCodeWarning => isAr
+      ? 'تنبيه: أمر RESET/استرجاع يعيد الرمز إلى الرمز الافتراضي المعروف (${AppConstants.defaultResetCode}). غيّر رمز الطوارئ فورًا بعد أي استخدام له.'
+      : 'Warning: the RESET command sets the code to the publicly documented default (${AppConstants.defaultResetCode}). Change your emergency code immediately after any use.';
   String get cmdLiveTrack => isAr
-      ? 'يفعّل تتبعًا مباشرًا: يرسل تحديثات دورية للموقع عبر SMS حتى يوقفها صاحب الهاتف من داخل التطبيق — لا يمكن إيقافها عن بُعد.'
-      : 'Activates live tracking: sends periodic location updates via SMS until the owner stops it from within the app — cannot be stopped remotely.';
+      ? 'يرسل موقع الهاتف فورًا ثم يبقى في وضع التتبع: كلما تحرك الجهاز ١٠٠ متر عن آخر موقع مُرسَل تصلك رسالة بالموقع الجديد. لا يمكن إيقافه عن بُعد، فقط من داخل التطبيق.'
+      : 'Sends the phone\'s location immediately, then stays in tracking mode: every time the device moves 100 m from the last sent position you get a new location message. Cannot be stopped remotely — only from within the app.';
 
   // ── Live tracking ────────────────────────────────────────────────────────
   String get liveTrackingActiveTitle =>
       isAr ? 'التتبع المباشر نشط' : 'Live Tracking Active';
   String get liveTrackingActiveDesc => isAr
-      ? 'يُرسل التطبيق تحديثات دورية لموقع هذا الجهاز عبر SMS لمن فعّل التتبع.'
-      : 'The app is sending periodic SMS location updates to whoever activated tracking.';
+      ? 'يُرسل التطبيق موقع هذا الجهاز عبر SMS لمن فعّل التتبع كلما تحرك ١٠٠ متر عن آخر موقع مُرسَل.'
+      : 'The app sends this device\'s location via SMS to whoever activated tracking each time it moves 100 m from the last sent position.';
   String get stopLiveTracking => isAr ? 'إيقاف التتبع المباشر' : 'Stop Live Tracking';
   String get stopLiveTrackingConfirmTitle =>
       isAr ? 'إيقاف التتبع المباشر؟' : 'Stop live tracking?';

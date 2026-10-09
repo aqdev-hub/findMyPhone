@@ -57,7 +57,7 @@ class SettingsRepository {
       await write('code_salt', salt, txn: txn);
       await write('code_hash', hash, txn: txn);
     });
-    await syncNativeState();
+    await syncNativeState(forceCode: true);
   }
 
   Future<void> savePhone(String phone) => write('phone', PhoneNormalizer.normalize(phone));
@@ -69,7 +69,7 @@ class SettingsRepository {
 
   Future<bool> alertAllContactsOnSimChange() async => (await read('alert_all_contacts_on_sim_change')) == 'true';
 
-  Future<void> syncNativeState() async {
+  Future<void> syncNativeState({bool forceCode = false}) async {
     final salt = await read('code_salt') ?? '';
     final hash = await read('code_hash') ?? '';
     final contacts = await TrustedContactsRepository(_db, this).all();
@@ -81,6 +81,7 @@ class SettingsRepository {
       contacts: contacts,
       contactLimit: limit,
       alertAllContactsOnSimChange: await alertAllContactsOnSimChange(),
+      forceCode: forceCode,
     );
   }
 

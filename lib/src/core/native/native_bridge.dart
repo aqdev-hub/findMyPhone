@@ -36,8 +36,12 @@ class NativeBridge {
     required List<TrustedContact> contacts,
     required int contactLimit,
     required bool alertAllContactsOnSimChange,
+    // true only when the user explicitly saves a new code inside the app —
+    // lets it override a pending SMS RESET (see NativeStore.syncSecurityState).
+    bool forceCode = false,
   }) =>
       _ch.invokeMethod('syncSecurityState', {
+        'forceCode': forceCode,
         'enabled': enabled,
         'codeSalt': codeSalt,
         'codeHash': codeHash,
@@ -111,6 +115,27 @@ class NativeBridge {
   /// Stops live tracking. By design this is the ONLY way to stop it — it
   /// cannot be stopped remotely via SMS, so a thief can't turn it back off.
   Future<void> stopLiveTracking() => _ch.invokeMethod('stopLiveTracking');
+
+  /// Requests one fresh location fix natively, racing GPS and Network
+  /// providers simultaneously (whichever answers first wins) — the same
+  /// robust logic that already powers the SMS LOCATE command. More
+  /// reliable than the Dart geolocator plugin alone on devices with
+  /// degraded Google Play Services, since it isn't limited to a single
+  /// provider strategy. Throws a [PlatformException] with code
+  /// 'location_timeout' if neither provider answers within [timeout].
+  Future<({double latitude, double longitude, double accuracy})>
+      captureFreshLocation({Duration timeout = const Duration(seconds: 25)}) async {
+    final result = await _ch.invokeMapMethod<String, dynamic>(
+      'captureFreshLocation',
+      {'timeoutMs': timeout.inMilliseconds},
+    );
+    final map = result!;
+    return (
+      latitude: map['latitude'] as double,
+      longitude: map['longitude'] as double,
+      accuracy: map['accuracy'] as double,
+    );
+  }
 
   Future<void> requestIgnoreBatteryOptimizations() =>
       _ch.invokeMethod('requestIgnoreBatteryOptimizations');

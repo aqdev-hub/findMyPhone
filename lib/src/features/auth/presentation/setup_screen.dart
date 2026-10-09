@@ -76,17 +76,17 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     final s = ref.read(stringsProvider);
     final activate = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         icon: const Icon(Icons.admin_panel_settings, size: 32),
         title: Text(s.settingsDeviceAdmin),
         content: Text(s.deviceAdminDesc),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: Text(s.onboardSkip),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: Text(s.activateDeviceAdmin),
           ),
         ],
