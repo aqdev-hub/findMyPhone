@@ -22,43 +22,82 @@ object DeviceSnapshot {
         return "INFO\nBattery: ${battery.first}%\nCharging: ${battery.second}\nCarrier: $carrier\nTime: ${Instant.now()}\nLast location: $lastTime"
     }
 
-    fun locate(context: Context): String {
-        // 1. ALWAYS get a fresh, live fix first — this is the entire point
-        // of a LOCATE command: the owner wants to know where the phone is
-        // RIGHT NOW, not wherever it happened to be the last time someone
-        // opened the app or ran a previous command. Bounded wait so a
-        // no-signal environment still degrades gracefully to cached data
-        // below instead of hanging.
-        val fresh = requestFreshLocationBlocking(context, timeoutMs = 15_000)
-        if (fresh != null) {
-            cacheLocation(context, fresh.latitude, fresh.longitude)
-            return locationMessage(context, "GPS (Live)", fresh.latitude, fresh.longitude, Instant.now().toString())
-        }
+    // Short, LOCATE-specific wait for a live fix. Speed matters more than
+    // squeezing out a perfect fix here: if nothing arrives in time we fall
+    // straight back to the freshest cached position. (The in-app
+    // "update location" button and captureFreshLocation use their own,
+    // longer timeouts — intentionally untouched.)
+    private const val LOCATE_LIVE_TIMEOUT_MS = 12_000L
 
-        // 2. Fresh fix failed or timed out (e.g. deep indoors, airplane
-        // mode) — fall back to whatever the system has cached.
+    // A system-cached fix younger than this is "live enough" to answer
+    // immediately instead of waiting for a brand-new fix.
+    private const val RECENT_FIX_MAX_AGE_MS = 15_000L
+
+    // Automatic SIM-change alerts run inside a BroadcastReceiver's short
+    // goAsync() window, so they use a much shorter location wait.
+    private const val ALERT_LIVE_TIMEOUT_MS = 6_000L
+
+    private data class Fix(val source: String, val lat: Any, val lng: Any, val time: String)
+
+    /**
+     * Single source of truth for "best location available right now":
+     *  1. a very recent system-cached fix (instant),
+     *  2. otherwise a live fix (GPS + Network raced, bounded by [liveTimeoutMs]),
+     *  3. otherwise the freshest system-cached fix of any age,
+     *  4. otherwise our own cached copy from the last app/command capture.
+     * Returns null only when nothing at all is known.
+     */
+    private fun bestFix(context: Context, liveTimeoutMs: Long): Fix? {
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+
+        // 1. Recent system cache — fastest possible answer.
         for (provider in providers) {
             try {
-                val location = manager.getLastKnownLocation(provider)
-                if (location != null) {
-                    val source = if (provider == LocationManager.GPS_PROVIDER) "GPS (Cached)" else "Approximate (Cached)"
-                    return locationMessage(context, source, location.latitude, location.longitude, Instant.ofEpochMilli(location.time).toString())
+                val cached = manager.getLastKnownLocation(provider)
+                if (cached != null && System.currentTimeMillis() - cached.time <= RECENT_FIX_MAX_AGE_MS) {
+                    cacheLocation(context, cached.latitude, cached.longitude)
+                    val source = if (provider == LocationManager.GPS_PROVIDER) "GPS" else "Approximate"
+                    return Fix(source, cached.latitude, cached.longitude, Instant.ofEpochMilli(cached.time).toString())
                 }
             } catch (_: SecurityException) {
             }
         }
 
-        // 3. Our own cache, populated whenever the Flutter side last
-        // captured a fix (setup, manual refresh, or a previous command).
+        // 2. Live fix, bounded wait.
+        val fresh = requestFreshLocationBlocking(context, liveTimeoutMs)
+        if (fresh != null) {
+            cacheLocation(context, fresh.latitude, fresh.longitude)
+            return Fix("GPS (Live)", fresh.latitude, fresh.longitude, Instant.now().toString())
+        }
+
+        // 3. Older system cache — better than nothing.
+        for (provider in providers) {
+            try {
+                val location = manager.getLastKnownLocation(provider)
+                if (location != null) {
+                    val source = if (provider == LocationManager.GPS_PROVIDER) "GPS (Cached)" else "Approximate (Cached)"
+                    return Fix(source, location.latitude, location.longitude, Instant.ofEpochMilli(location.time).toString())
+                }
+            } catch (_: SecurityException) {
+            }
+        }
+
+        // 4. Our own cache (setup, manual refresh, previous commands).
         val prefs = NativeStore.prefs(context)
         val lat = prefs.getString("last_latitude", null)
         val lng = prefs.getString("last_longitude", null)
-        val time = prefs.getString("last_location_time", "Unavailable") ?: "Unavailable"
-        if (lat != null && lng != null) return locationMessage(context, "Last Known", lat, lng, time)
+        if (lat != null && lng != null) {
+            return Fix("Last Known", lat, lng, prefs.getString("last_location_time", "Unavailable") ?: "Unavailable")
+        }
+        return null
+    }
 
-        return "LOCATION UNAVAILABLE\nلا يوجد موقع حالي أو آخر موقع محفوظ.\nBattery: ${battery(context).first}%\nCarrier: ${carrier(context)}"
+    /** One reply only: the fastest best location available, in the same format as before. */
+    fun locate(context: Context): String {
+        val fix = bestFix(context, LOCATE_LIVE_TIMEOUT_MS)
+            ?: return "LOCATION UNAVAILABLE\nلا يوجد موقع حالي أو آخر موقع محفوظ.\nBattery: ${battery(context).first}%\nCarrier: ${carrier(context)}"
+        return locationMessage(context, fix.source, fix.lat, fix.lng, fix.time)
     }
 
     fun cacheLocation(context: Context, lat: Double, lng: Double) {
@@ -125,9 +164,11 @@ object DeviceSnapshot {
         return "LOCATION\nSource: $source\nLat: $lat\nLng: $lng\nUpdated: $time\nBattery: $battery%\nCarrier: ${carrier(context)}\nhttps://maps.google.com/?q=$lat,$lng"
     }
 
+    /** Automatic alert — short, starts with a fixed reason so it can't be mistaken for a command reply. */
     fun simAlert(context: Context): String {
-        val last = locate(context)
-        return "SIM CHANGE ALERT\nTime: ${Instant.now()}\nCarrier: ${carrier(context)}\n$last"
+        val fix = bestFix(context, ALERT_LIVE_TIMEOUT_MS)
+        val where = if (fix != null) "${fix.lat}, ${fix.lng}\nhttps://maps.google.com/?q=${fix.lat},${fix.lng}" else "الموقع غير متاح / Location unavailable"
+        return "تنبيه تلقائي: تغيير شريحة SIM\nAuto alert: SIM changed\nالمشغّل: ${carrier(context)}\n$where"
     }
 
     private fun carrier(context: Context): String {

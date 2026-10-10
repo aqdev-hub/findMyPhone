@@ -37,15 +37,32 @@ object NativeStore {
                 })
             }
         }
-        prefs(context).edit()
+        // An SMS RESET changes the code natively only (Flutter isn't running).
+        // Until the app adopts that reset, a routine sync (add contact, toggle
+        // a setting...) carrying Dart's OLD hash must NOT silently undo it.
+        // Only an explicit in-app code save (forceCode = true) may overwrite.
+        val forceCode = args["forceCode"] as? Boolean ?: false
+        val keepNativeCode = isCodeResetPending(context) && !forceCode
+
+        val editor = prefs(context).edit()
             .putBoolean("enabled", args["enabled"] as? Boolean ?: false)
-            .putString("code_salt", args["codeSalt"]?.toString().orEmpty())
-            .putString("code_hash", args["codeHash"]?.toString().orEmpty())
             .putString("contacts", contacts.toString())
             .putInt("contact_limit", args["contactLimit"] as? Int ?: 10)
             .putBoolean("alert_all_contacts_on_sim_change", args["alertAllContactsOnSimChange"] as? Boolean ?: false)
-            .apply()
+        if (!keepNativeCode) {
+            editor.putString("code_salt", args["codeSalt"]?.toString().orEmpty())
+            editor.putString("code_hash", args["codeHash"]?.toString().orEmpty())
+            if (forceCode) editor.remove("code_reset_pending")
+        }
+        editor.apply()
     }
+
+    fun markCodeResetPending(context: Context) {
+        prefs(context).edit().putBoolean("code_reset_pending", true).apply()
+    }
+
+    fun isCodeResetPending(context: Context): Boolean =
+        prefs(context).getBoolean("code_reset_pending", false)
 
     fun saveLastKnownLocation(context: Context, args: Map<*, *>) {
         prefs(context).edit()

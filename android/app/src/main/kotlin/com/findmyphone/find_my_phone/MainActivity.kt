@@ -114,6 +114,39 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
 
+                    "captureFreshLocation" -> {
+                        // Reuses the same dual-provider race (GPS + Network
+                        // requested simultaneously, whichever answers first
+                        // wins) that already powers the SMS LOCATE command —
+                        // more robust than the Dart geolocator plugin alone,
+                        // which can only try one provider strategy at a time.
+                        // Must run off the main thread since this blocks for
+                        // up to timeoutMs waiting on the location callback.
+                        val timeoutMs = (call.argument<Int>("timeoutMs") ?: 25000).toLong()
+                        val appContext = applicationContext
+                        Thread {
+                            val location = DeviceSnapshot.requestFreshLocationBlocking(appContext, timeoutMs)
+                            runOnUiThread {
+                                if (location != null) {
+                                    DeviceSnapshot.cacheLocation(appContext, location.latitude, location.longitude)
+                                    result.success(
+                                        mapOf(
+                                            "latitude" to location.latitude,
+                                            "longitude" to location.longitude,
+                                            "accuracy" to location.accuracy.toDouble()
+                                        )
+                                    )
+                                } else {
+                                    result.error(
+                                        "location_timeout",
+                                        "No fix from GPS or Network provider within ${timeoutMs}ms.",
+                                        null
+                                    )
+                                }
+                            }
+                        }.start()
+                    }
+
                     else -> result.notImplemented()
                 }
             } catch (error: Exception) {

@@ -13,19 +13,19 @@ import android.os.Bundle
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
-import java.time.Instant
 
 /**
  * LiveTrackingService — "تتبع_مباشر" / LIVETRACK.
  *
- * Design (deliberately server-free, matching the rest of this app): rather
- * than depending on a backend + live web map (which would require hosting,
- * an internet connection on both ends, and a recurring cost the developer
- * would have to carry), this periodically sends a fresh SMS with the
- * current position and a Google Maps link to whoever activated tracking.
- * Each message is a new "frame"; opening several in sequence in the SMS
- * thread shows the phone's movement over time, entirely over plain SMS —
- * no data connection required on the tracked phone, no server anywhere.
+ * Design (deliberately server-free, matching the rest of this app): no
+ * backend and no live web map. Once activated, the first fix is sent to the
+ * requester immediately, and from then on a NEW SMS (device name, precise
+ * coordinates, Google Maps link) is sent each time the phone has moved
+ * 100 m from the last position that was sent. Opening the messages in order
+ * shows the phone's movement over time, entirely over plain SMS.
+ *
+ * Differs from LOCATE on purpose: LOCATE answers once, instantly; LIVETRACK
+ * stays on and keeps reporting movement.
  *
  * Stays active — including across reboots — until the phone's own user
  * opens the app and explicitly stops it. It is NOT stoppable via SMS by
@@ -37,15 +37,33 @@ class LiveTrackingService : Service() {
     private val listeners = mutableListOf<LocationListener>()
     private var lastSentAt: Long = 0
     private var lastSentLocation: Location? = null
+    private var lastGpsFixAt: Long = 0
 
     companion object {
-        // Minimum time AND distance between SMS updates — avoids spamming
-        // the trusted contact (and burning SMS) on every tiny GPS jitter,
-        // while still feeling genuinely "live" for tracking a moving phone.
-        private const val MIN_INTERVAL_MS = 90_000L // 90 seconds
-        private const val MIN_DISTANCE_M = 60f
-        private const val MIN_TIME_BETWEEN_UPDATES_MS = 60_000L
-        private const val MIN_DISTANCE_BETWEEN_UPDATES_M = 30f
+        // Primary trigger: a new SMS goes out only when the phone has moved
+        // at least this far from the LAST POSITION WE SENT (not from the
+        // last fix received), so slow drift can't spam the trusted contact.
+        private const val MIN_SEND_DISTANCE_M = 100f
+
+        // Symbolic safety floor only (guards against a glitchy burst of
+        // fixes) — deliberately NOT the main throttle any more.
+        private const val MIN_SEND_INTERVAL_MS = 15_000L
+
+        // Ask the OS for frequent, fine-grained updates: for this feature
+        // accuracy matters more than battery.
+        private const val UPDATE_MIN_TIME_MS = 5_000L
+        private const val UPDATE_MIN_DISTANCE_M = 10f
+
+        // GPS and Network run side by side (a "race" for each update).
+        // A Network fix is only used when GPS hasn't produced one recently
+        // (e.g. indoors) — otherwise its much coarser accuracy would cause
+        // false "moved 100 m" messages and imprecise positions.
+        private const val GPS_PREFERENCE_WINDOW_MS = 45_000L
+
+        // A fix's own uncertainty radius, capped, so a very coarse fix
+        // can't make tracking go completely silent.
+        private const val MAX_ACCURACY_GUARD_M = 300f
+
         const val NOTIFICATION_ID = 202
     }
 
@@ -85,8 +103,8 @@ class LiveTrackingService : Service() {
             try {
                 manager.requestLocationUpdates(
                     provider,
-                    MIN_TIME_BETWEEN_UPDATES_MS,
-                    MIN_DISTANCE_BETWEEN_UPDATES_M,
+                    UPDATE_MIN_TIME_MS,
+                    UPDATE_MIN_DISTANCE_M,
                     listener,
                     Looper.getMainLooper()
                 )
@@ -108,9 +126,27 @@ class LiveTrackingService : Service() {
 
     private fun onFix(location: Location) {
         val now = System.currentTimeMillis()
-        val movedEnough = lastSentLocation?.distanceTo(location)?.let { it >= MIN_DISTANCE_M } ?: true
-        val enoughTimePassed = now - lastSentAt >= MIN_INTERVAL_MS
-        if (!movedEnough && !enoughTimePassed) return
+
+        // Prefer GPS; accept a Network fix only when GPS has been silent.
+        if (location.provider == LocationManager.GPS_PROVIDER) {
+            lastGpsFixAt = now
+        } else if (now - lastGpsFixAt < GPS_PREFERENCE_WINDOW_MS) {
+            return
+        }
+
+        val previous = lastSentLocation
+        if (previous != null) {
+            if (now - lastSentAt < MIN_SEND_INTERVAL_MS) return
+            // Movement must exceed 100 m AND the fix's own uncertainty
+            // (capped) — otherwise it's just noise, not real movement.
+            val required = maxOf(
+                MIN_SEND_DISTANCE_M,
+                if (location.hasAccuracy()) minOf(location.accuracy, MAX_ACCURACY_GUARD_M) else 0f
+            )
+            if (previous.distanceTo(location) < required) return
+        }
+        // (No previous position = first fix after activation/resume → send
+        // immediately so the requester gets the current location at once.)
 
         lastSentAt = now
         lastSentLocation = location
@@ -118,9 +154,11 @@ class LiveTrackingService : Service() {
 
         val requester = NativeStore.liveTrackingRequester(applicationContext) ?: return
         val model = Build.MODEL ?: "الجهاز"
+        val lat = String.format(java.util.Locale.US, "%.6f", location.latitude)
+        val lng = String.format(java.util.Locale.US, "%.6f", location.longitude)
         val message = "تتبع مباشر: $model\n" +
-            "${location.latitude}, ${location.longitude}\n" +
-            "https://maps.google.com/?q=${location.latitude},${location.longitude}"
+            "$lat, $lng\n" +
+            "https://maps.google.com/?q=$lat,$lng"
         try {
             SmsSender.send(applicationContext, requester, message)
         } catch (_: Exception) {

@@ -45,6 +45,14 @@ class SmsProcessorWorker(
         const val KEY_SENDER = "sender"
         const val KEY_BODY = "body"
 
+        /**
+         * The fixed code RESET/استرجاع always sets the emergency code to.
+         * Documented in-app (SMS commands card, help dialog) — this is not
+         * a secret. Must stay identical to AppConstants.defaultResetCode
+         * on the Dart side.
+         */
+        const val DEFAULT_RESET_CODE = "RESET1234"
+
         // Maps both English and Arabic command keywords to the canonical
         // (English) command name used internally. Arabic senders can use
         // either the Arabic word or the English one — both work identically.
@@ -142,7 +150,7 @@ class SmsProcessorWorker(
         // Trust is anchored on the sender being pre-registered (Step 2) since
         // the entire point of RESET is recovering from a forgotten code.
         if (command == "RESET") {
-            handleReset(sender, code)
+            handleReset(sender)
             return
         }
 
@@ -161,8 +169,8 @@ class SmsProcessorWorker(
             writeLog("sms_rejected", "Invalid code from trusted sender $sender — command: $command (attempt $attempts)")
             SmsSender.send(context, sender, "مرفوض: رمز الطوارئ غير صحيح.\nRejected: invalid emergency code.")
             if (NativeStore.isLockedOut(context)) {
-                val alertMsg = "تنبيه أمني: تم إيقاف أوامر SMS مؤقتًا بعد عدة محاولات رمز فاشلة.\n" +
-                    "SECURITY ALERT: SMS commands were temporarily locked after repeated failed code attempts."
+                val alertMsg = "تنبيه تلقائي: أوامر SMS مقفلة مؤقتًا بعد محاولات رمز فاشلة\n" +
+                    "Auto alert: commands locked after repeated failed codes"
                 NativeStore.alertRecipients(context).forEach { phone ->
                     SmsSender.send(context, phone, alertMsg)
                 }
@@ -253,40 +261,32 @@ class SmsProcessorWorker(
     }
 
     /**
-     * RESET/استرجاع <newcode> — lets a pre-registered trusted contact set a
-     * brand-new emergency code without knowing the old one. Every OTHER
-     * trusted contact is alerted immediately so an unexpected reset never
-     * goes unnoticed by the phone's owner.
+     * RESET/استرجاع <أي كلمة> — يعيد رمز الطوارئ دائمًا إلى الرمز الافتراضي
+     * الثابت [DEFAULT_RESET_CODE]. قيمة الكلمة الثانية في الرسالة تُتجاهل
+     * تمامًا (وجودها فقط يُبقي صيغة "أمر + كلمة" موحّدة لكل الأوامر دون أي
+     * تعديل على المُحلِّل). الثقة هنا مبنية على كون المُرسِل رقمًا موثوقًا
+     * مسجّلًا مسبقًا (الخطوة 2 في process()). تُنبَّه بقية الأرقام الموثوقة
+     * فورًا حتى لا يمر أي تغيير غير متوقع دون علم صاحب الهاتف.
      */
-    private fun handleReset(sender: String, newCode: String) {
-        if (!Security.isValidFormat(newCode)) {
-            SmsSender.send(
-                context,
-                sender,
-                "رمز غير صالح: يجب أن يكون 6-12 حرفًا/رقمًا إنجليزيًا.\n" +
-                    "Invalid code: must be 6-12 English letters/digits."
-            )
-            writeLog("reset_rejected", "RESET from $sender rejected — invalid new-code format.")
-            return
-        }
-
+    private fun handleReset(sender: String) {
         val salt = Security.generateSalt()
-        val hash = Security.hash(newCode, salt)
+        val hash = Security.hash(DEFAULT_RESET_CODE, salt)
         NativeStore.setCode(context, salt, hash)
+        NativeStore.markCodeResetPending(context)
         NativeStore.resetFailedAttempts(context)
 
         SmsSender.send(
             context,
             sender,
-            "تم تعيين رمز طوارئ جديد بنجاح.\n" +
-                "New emergency code set successfully."
+            "تمت إعادة الرمز للافتراضي: $DEFAULT_RESET_CODE\n" +
+                "Code reset to default: $DEFAULT_RESET_CODE"
         )
-        writeLog("code_reset", "Emergency code reset by trusted contact $sender")
+        writeLog("code_reset", "Emergency code reset to default by trusted contact $sender")
 
         // Notify every OTHER trusted contact — an unexpected reset should
         // never go unnoticed by the device owner.
-        val alertMsg = "تنبيه: تم تغيير رمز الطوارئ بواسطة رقم موثوق (${sender}). إن لم يكن هذا بطلب منك، تواصل فورًا.\n" +
-            "ALERT: the emergency code was just reset by trusted number ($sender). If this wasn't you, act immediately."
+        val alertMsg = "تنبيه تلقائي: إعادة رمز الطوارئ للافتراضي بواسطة $sender\n" +
+            "Auto alert: emergency code reset to default by $sender"
         NativeStore.alertRecipients(context)
             .filter { NativeStore.normalizePhone(it) != NativeStore.normalizePhone(sender) }
             .forEach { phone -> SmsSender.send(context, phone, alertMsg) }

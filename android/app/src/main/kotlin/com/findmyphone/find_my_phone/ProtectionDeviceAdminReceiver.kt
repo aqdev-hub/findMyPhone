@@ -50,9 +50,8 @@ class ProtectionDeviceAdminReceiver : DeviceAdminReceiver() {
         val recipients = NativeStore.alertRecipients(context)
         if (recipients.isEmpty()) return
 
-        val message = "تنبيه أمني: تم إلغاء تفعيل حماية إلغاء التثبيت على هاتفك.\n" +
-            "SECURITY ALERT: Anti-uninstall protection was just deactivated on your phone.\n" +
-            "Time: ${Instant.now()}"
+        val message = "تنبيه تلقائي: تم إلغاء تفعيل الحماية من إلغاء التثبيت\n" +
+            "Auto alert: anti-uninstall protection disabled"
 
         for (phone in recipients) {
             try {
